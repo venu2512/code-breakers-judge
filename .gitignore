@@ -1,0 +1,8 @@
+node_modules/
+.next/
+out/
+# Runtime data (SQLite DBs, WAL, and backups) is never pushed.
+data/
+.env.local
+*.log
+tsconfig.tsbuildinfo

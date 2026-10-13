@@ -1,0 +1,39 @@
+{
+  "name": "code-breakers-judge",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/copy-monaco.mjs && next dev -H 0.0.0.0 -p 3000",
+    "build": "node scripts/copy-monaco.mjs && next build",
+    "start": "next start -H 0.0.0.0 -p 3000",
+    "seed": "tsx scripts/seed.ts",
+    "reset": "tsx scripts/reset.ts",
+    "backup": "node --env-file=.env.local --import tsx scripts/backup.ts",
+    "monaco": "node scripts/copy-monaco.mjs",
+    "postinstall": "node scripts/copy-monaco.mjs",
+    "smoke": "node --import tsx scripts/smoke.ts",
+    "security": "node --env-file=.env.local --import tsx scripts/security-test.ts",
+    "e2e": "node --env-file=.env.local --import tsx scripts/e2e-judge.ts",
+    "load": "node --env-file=.env.local --import tsx scripts/loadtest.ts",
+    "test": "node --import tsx --test \"tests/*.test.ts\""
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^13.0.3",
+    "jose": "^5.9.6",
+    "monaco-editor": "^0.52.2",
+    "next": "^15.1.6",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.7",
+    "@types/react-dom": "^19.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
