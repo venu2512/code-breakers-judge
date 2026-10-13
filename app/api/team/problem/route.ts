@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import { getTeamAssignment, getTeamEligibility } from "@/lib/assign";
-import { requireRole } from "@/lib/api";
+import { getStatus, roundTiming } from "@/lib/contest";
+import { findRoundSubmission } from "@/lib/submissions";
 import { handler, ok } from "@/lib/api";
+import { requireRole } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -18,12 +20,24 @@ export const GET = handler(async () => {
   const session = await requireRole("team");
   const eligibility = getTeamEligibility(session.teamId);
 
+  // Current round timing + the team's one-shot submission, so the UI can show
+  // "Your time" ticking from the round start and freeze it at submission.
+  const status = getStatus();
+  const round = status.currentRound;
+  const roundStartedAtMs = roundTiming(round)?.started_at ?? status.startedAt;
+  const submission = findRoundSubmission(session.teamId, round);
+  const submitted = submission !== undefined;
+  const submittedAtMs = submission?.created_at ?? null;
+
   // Teams that were not shortlisted cannot see or work on a problem.
   if (!eligibility.qualified) {
     return ok({
       qualified: false,
       assigned: false,
       round: eligibility.round,
+      roundStartedAtMs,
+      submitted,
+      submittedAtMs,
       problem: null,
     });
   }
@@ -35,6 +49,9 @@ export const GET = handler(async () => {
       qualified: true,
       assigned: false,
       round: eligibility.round,
+      roundStartedAtMs,
+      submitted,
+      submittedAtMs,
       problem: null,
     });
   }
@@ -51,6 +68,9 @@ export const GET = handler(async () => {
       qualified: true,
       assigned: false,
       round: eligibility.round,
+      roundStartedAtMs,
+      submitted,
+      submittedAtMs,
       problem: null,
     });
   }
@@ -67,6 +87,9 @@ export const GET = handler(async () => {
     qualified: true,
     assigned: true,
     round: eligibility.round,
+    roundStartedAtMs,
+    submitted,
+    submittedAtMs,
     problem: {
       id: problem.id,
       code: assignment.problem_code,

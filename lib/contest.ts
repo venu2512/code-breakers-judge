@@ -180,9 +180,13 @@ export function resetContest(): ContestStatusView {
       current_round: 1,
       lockdown: 0,
     });
-    // Bring every team back in and forget this run's round timings.
+    // Bring every team back in and forget this run's round timings and results.
     db.prepare("UPDATE teams SET eligible_round = 99").run();
     db.prepare("DELETE FROM rounds").run();
+    // Submissions are one-shot per round, so a reset must clear them too —
+    // otherwise a team that submitted during rehearsal could never submit
+    // again after the admin resets for the real run.
+    db.prepare("DELETE FROM submissions").run();
   });
   tx();
   return getStatus();

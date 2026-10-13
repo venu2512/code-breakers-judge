@@ -9,12 +9,15 @@ a browser. No internet, no Docker, no Judge0.
 - Teams write code in the browser (Monaco editor, bundled locally).
 - **Run** checks the sample tests and shows the output.
 - **Submit** is judged on the hidden tests. The team only learns that the
-  submission was received.
+  submission was received. **Each team submits exactly once per round** — the
+  moment they click *Submit* their personal timer freezes and the code locks
+  (no editing, running or re-submitting). The shared round countdown keeps
+  running for reference.
 - Only the **admin** sees scores, per-test results and the leaderboard.
-- The event supports **multiple rounds** (default 3). Each round has its own
-  problems and its own score. Between rounds the admin shortlists which teams
-  advance; the rest can still log in but are told they did not qualify and
-  cannot run or submit.
+- The event supports **multiple rounds** (default 3, changeable anytime from the
+  admin dashboard). Each round has its own problems and its own score. Between
+  rounds the admin shortlists which teams advance; the rest can still log in but
+  are told they did not qualify and cannot run or submit.
 
 ---
 
@@ -104,6 +107,7 @@ npm run dev
 | `npm test` | Unit tests for scoring, ties, assignment, output comparison |
 | `npm run smoke` | Runs real programs incl. infinite loop / huge output / crash |
 | `npm run security` | Live checks that teams cannot see hidden data |
+| `npm run e2e-rounds` | Full multi-round flow (3 rounds, shortlisting, one-shot locks) against a running server on port 3001 |
 | `npm run load` | Fire many submissions at once |
 
 ---
@@ -118,11 +122,15 @@ npm run dev
 4. **Assignments** → preview the round-robin split and swap a team's problem if
    needed. Only teams that qualified are assigned.
 5. **Dashboard** → check the language runtimes, set duration, choose allowed
-   languages, and set the **total rounds** (default 3).
+   languages, and set the **total rounds** (default 3). The total can be changed
+   at any time, even mid-round — the current round never jumps.
 6. **Start** the contest. The clock is the server clock and is the single source
    of truth.
-7. Watch the **Live monitor**; use **Submissions** to inspect code and rejudge,
-   and **Leaderboard** to export CSV.
+7. Watch the **Live monitor** (✓/— marks whether each team already submitted —
+   remember, each team gets exactly one submission per round); use
+   **Submissions** to inspect code and rejudge, and **Leaderboard** to export CSV.
+   The **Recent events** panel shows who did what, with the **team name** on
+   every tab-switch/paste event for proctoring.
 
 ### Between rounds (shortlisting)
 
@@ -156,11 +164,14 @@ you advance.
 - Both **Run** (sample tests) and **Submit** (hidden tests) go through the same
   bounded judge queue, so at most **3 jobs** run at once and "Run" cannot pin
   the server CPU.
-- A team may submit again only after a **15 second** cooldown, and run the
-  samples again after a **3 second** cooldown (both configurable).
-- **Best submission** = most hidden tests passed, earliest time on ties.
-  **Rank** = score descending, then time from contest start ascending.
+- A team's personal timer starts at the round start and **freezes the moment they
+  submit**. The shared countdown keeps running for everyone.
+- **One submission per round.** A second submit (or a run, or an edit) after the
+  submission is rejected by the server, and the dashboard shows ✓/— so the admin
+  can see who already locked in. A *Reset* clears all submissions for a fresh run.
+- **Rank** = score descending, then the frozen time from the round start ascending.
 - Every run/submit is rejected once the server clock passes the end time.
+- The 15s submit / 3s run cooldowns still apply to the first submission.
 
 ---
 
@@ -176,8 +187,8 @@ you advance.
   important. Keep the server PC **offline** during the event.
 - Disable AI/code-completion extensions on the lab browsers.
 - Optional proctoring: set `NEXT_PUBLIC_BLOCK_PASTE=1` in `.env.local` to block
-  paste into the editor. Tab switches and paste attempts are always recorded and
-  shown in the admin event log.
+  paste into the editor. Tab switches and paste attempts are always recorded with
+  the team name and shown in the admin event log.
 
 ---
 

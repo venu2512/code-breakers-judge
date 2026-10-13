@@ -26,6 +26,26 @@ function dbNow(): number {
   return Date.now();
 }
 
+/**
+ * The team's submission for a round (one-shot rule: at most one per round).
+ * Newest row wins; this is also the timestamp used to freeze the team timer.
+ */
+export function findRoundSubmission(
+  teamId: number,
+  round: number
+): { id: number; created_at: number } | undefined {
+  return db
+    .prepare(
+      "SELECT id, created_at FROM submissions WHERE team_id = ? AND round = ? ORDER BY id DESC LIMIT 1"
+    )
+    .get(teamId, round) as { id: number; created_at: number } | undefined;
+}
+
+/** True when the team already submitted for the current round. */
+export function hasSubmittedThisRound(teamId: number): boolean {
+  return findRoundSubmission(teamId, currentRound()) !== undefined;
+}
+
 /** Insert a submission in PENDING state and return its id. */
 export function createSubmission(
   teamId: number,

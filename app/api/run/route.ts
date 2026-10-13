@@ -2,6 +2,7 @@ import { getTeamAssignment, getTeamEligibility } from "@/lib/assign";
 import { getStatus, isContestOpen } from "@/lib/contest";
 import { judge } from "@/lib/judge";
 import { judgeQueue } from "@/lib/queue";
+import { hasSubmittedThisRound } from "@/lib/submissions";
 import { reserveCooldown } from "@/lib/ratelimit";
 import { clientInfo, logEvent } from "@/lib/events";
 import { handler, HttpError, ok, readJson, requireRole } from "@/lib/api";
@@ -47,6 +48,15 @@ export const POST = handler(async (req: Request) => {
 
   const assignment = getTeamAssignment(session.teamId);
   if (!assignment) throw new HttpError(409, "No problem assigned yet");
+
+  // Once a team submits for the round, their solution is locked: no more runs
+  // (they could not change the code anyway).
+  if (hasSubmittedThisRound(session.teamId)) {
+    throw new HttpError(
+      409,
+      "You have already submitted this round — your solution is locked, so running is disabled."
+    );
+  }
 
   // Per-team run cooldown (check + reserve are synchronous, so concurrent
   // requests cannot both slip through). Runs share the bounded judge queue so

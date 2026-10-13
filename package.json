@@ -14,6 +14,7 @@
     "smoke": "node --import tsx scripts/smoke.ts",
     "security": "node --env-file=.env.local --import tsx scripts/security-test.ts",
     "e2e": "node --env-file=.env.local --import tsx scripts/e2e-judge.ts",
+    "e2e-rounds": "node --env-file=.env.local scripts/e2e-roundflow.mjs",
     "load": "node --env-file=.env.local --import tsx scripts/loadtest.ts",
     "test": "node --import tsx --test \"tests/*.test.ts\""
   },

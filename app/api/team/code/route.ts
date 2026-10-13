@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { handler, HttpError, ok, readJson, requireRole } from "@/lib/api";
+import { hasSubmittedThisRound } from "@/lib/submissions";
 import { ALL_LANGUAGES, type Language } from "@/lib/config";
 
 export const runtime = "nodejs";
@@ -25,6 +26,12 @@ export const POST = handler(async (req: Request) => {
   const body = await readJson<{ language?: string; code?: string }>(req);
   if (!isLanguage(body.language)) throw new HttpError(400, "Unknown language");
   if (typeof body.code !== "string") throw new HttpError(400, "Missing code");
+
+  // The editor is locked after the team submits for the round — the stored
+  // code must not change afterwards (defence in depth behind the read-only UI).
+  if (hasSubmittedThisRound(session.teamId)) {
+    throw new HttpError(409, "Your solution is locked after submission — editing is disabled.");
+  }
 
   db.prepare(
     `INSERT INTO team_code (team_id, language, code, updated_at)

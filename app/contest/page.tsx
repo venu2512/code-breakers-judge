@@ -18,6 +18,12 @@ interface ProblemPayload {
   qualified?: boolean;
   assigned: boolean;
   round?: number;
+  /** Round start (server clock) — base of the team's personal timer. */
+  roundStartedAtMs?: number | null;
+  /** True once the team submitted for this round (one-shot rule). */
+  submitted?: boolean;
+  /** Server time when the team's timer was frozen by their submission. */
+  submittedAtMs?: number | null;
   problem: null | {
     id: number;
     code: string;
@@ -40,6 +46,9 @@ export default function ContestPage() {
   const [assigned, setAssigned] = useState<boolean | null>(null);
   const [qualified, setQualified] = useState<boolean | null>(null);
   const [round, setRound] = useState<number | null>(null);
+  const [roundStartedAtMs, setRoundStartedAtMs] = useState<number | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedAtMs, setSubmittedAtMs] = useState<number | null>(null);
 
   const [language, setLanguage] = useState<Language>("python");
   const [codeByLang, setCodeByLang] = useState<Partial<Record<Language, string>>>({});
@@ -168,7 +177,8 @@ export default function ContestPage() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [session]);
 
-  // ---- fetch assigned problem once the contest is running ----
+  // ---- fetch assigned problem while running (and after it ends, so a reload
+  // still restores the locked/submitted state) ----
   const loadProblem = useCallback(async () => {
     try {
       const p = await apiGet<ProblemPayload>("/api/team/problem");
@@ -176,13 +186,18 @@ export default function ContestPage() {
       setRound(p.round ?? null);
       setAssigned(p.assigned);
       setProblem(p.problem);
+      setRoundStartedAtMs(p.roundStartedAtMs ?? null);
+      setSubmitted(p.submitted ?? false);
+      setSubmittedAtMs(p.submittedAtMs ?? null);
     } catch {
       /* ignore transient errors */
     }
   }, []);
 
   useEffect(() => {
-    if (status?.state === "running") loadProblem();
+    if (status && (status.state === "running" || status.state === "ended")) {
+      loadProblem();
+    }
   }, [status?.state, loadProblem]);
 
   const allowed = status?.allowedLanguages ?? ["python"];
@@ -255,10 +270,23 @@ export default function ContestPage() {
     setNotice("");
     setSubmitting(true);
     try {
-      await apiPost("/api/submit", { language, code });
+      const res = await apiPost<{
+        received: boolean;
+        submissionId: number;
+        at: number;
+        submittedAtMs: number;
+        roundStartedAtMs: number | null;
+        elapsedSeconds: number | null;
+      }>("/api/submit", { language, code });
       setDirty(false);
+      // Freeze the personal timer at the server-confirmed submit instant.
+      setSubmitted(true);
+      setSubmittedAtMs(res.submittedAtMs ?? res.at);
+      if (res.roundStartedAtMs != null) setRoundStartedAtMs(res.roundStartedAtMs);
+      const locked =
+        res.elapsedSeconds != null ? formatTime(res.elapsedSeconds) : "";
       setNotice(
-        `Submission received at ${new Date().toLocaleTimeString()}. Good luck!`
+        `Submission received at ${new Date().toLocaleTimeString()}. Your time is locked${locked ? ` at ${locked}` : ""} — editing and re-submitting are disabled for this round.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submit failed");
@@ -272,6 +300,15 @@ export default function ContestPage() {
     if (!serverEndsAt) return status?.secondsRemaining ?? 0;
     return Math.max(0, Math.round((serverEndsAt - serverNow) / 1000));
   }, [serverEndsAt, serverNow, status]);
+
+  // "Your time": counts up from the round start and freezes at the moment of
+  // submission. The common countdown keeps running for reference either way.
+  const yourTimeSeconds = useMemo(() => {
+    if (!running_ && status?.state !== "ended") return null;
+    if (roundStartedAtMs == null) return null;
+    const base = submitted && submittedAtMs != null ? submittedAtMs : serverNow;
+    return Math.max(0, Math.round((base - roundStartedAtMs) / 1000));
+  }, [running_, status?.state, roundStartedAtMs, submitted, submittedAtMs, serverNow]);
 
   if (!session || session.role !== "team") {
     return (
@@ -323,6 +360,8 @@ export default function ContestPage() {
           <TimerBar
             secondsLeft={secondsLeft}
             durationSeconds={status?.durationSeconds ?? 2700}
+            yourTimeSeconds={yourTimeSeconds}
+            submitted={submitted}
           />
 
           {qualified === false ? (
@@ -372,6 +411,7 @@ export default function ContestPage() {
                       id="lang"
                       value={language}
                       onChange={(e) => setLanguage(e.target.value as Language)}
+                      disabled={submitted}
                     >
                       {allowed.map((l) => (
                         <option key={l} value={l}>
@@ -381,24 +421,38 @@ export default function ContestPage() {
                     </select>
                   </div>
                   <div className="row">
-                    <button onClick={handleRun} disabled={!running_ || running}>
+                    <button
+                      onClick={handleRun}
+                      disabled={!running_ || running || submitted}
+                    >
                       {running ? "Running…" : "Run samples"}
                     </button>
                     <button
                       className="primary"
                       onClick={() => setConfirmOpen(true)}
-                      disabled={!running_ || submitting}
+                      disabled={!running_ || submitting || submitted}
                     >
                       {submitting ? "Sending…" : "Submit"}
                     </button>
                   </div>
                 </div>
 
+                {submitted && (
+                  <div
+                    className="success"
+                    style={{ marginBottom: 8, padding: "8px 12px", borderRadius: 6 }}
+                  >
+                    ✓ Submitted — your time is locked
+                    {yourTimeSeconds != null ? ` at ${formatTime(yourTimeSeconds)}` : ""}.{" "}
+                    Editing, running and re-submitting are disabled for this round.
+                  </div>
+                )}
+
                 <CodeEditor
                   language={language}
                   value={code}
                   onChange={updateCode}
-                  readOnly={!running_}
+                  readOnly={!running_ || submitted}
                   height="420px"
                   blockPaste={BLOCK_PASTE}
                   onPaste={(blocked) =>
@@ -513,23 +567,46 @@ function WaitingScreen({ status }: { status: ContestStatusView | null }) {
   );
 }
 
+function formatTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function TimerBar({
   secondsLeft,
   durationSeconds,
+  yourTimeSeconds,
+  submitted,
 }: {
   secondsLeft: number;
   durationSeconds: number;
+  /** The team's own elapsed clock; null until the round has a start time. */
+  yourTimeSeconds: number | null;
+  /** True once submitted — "Your time" is frozen and flagged. */
+  submitted: boolean;
 }) {
   const pct = Math.max(0, Math.min(100, (secondsLeft / durationSeconds) * 100));
   const low = secondsLeft <= 300;
-  const m = Math.floor(secondsLeft / 60);
-  const s = secondsLeft % 60;
   return (
     <div>
       <div className="row spread small">
-        <span className="muted">Time remaining</span>
-        <span className={`mono ${low ? "error" : ""}`} style={{ fontSize: 18 }}>
-          {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
+        {yourTimeSeconds != null ? (
+          <span className="muted">
+            Your time:{" "}
+            <span className={`mono ${submitted ? "success" : ""}`} style={{ fontSize: 18 }}>
+              {formatTime(yourTimeSeconds)}
+            </span>
+            {submitted ? " · locked" : ""}
+          </span>
+        ) : (
+          <span className="muted">Your time: —</span>
+        )}
+        <span className="muted">
+          Time remaining:{" "}
+          <span className={`mono ${low ? "error" : ""}`} style={{ fontSize: 18 }}>
+            {formatTime(Math.max(0, secondsLeft))}
+          </span>
         </span>
       </div>
       <div className={`timerbar ${low ? "low" : ""}`} style={{ marginTop: 6 }}>
@@ -596,8 +673,12 @@ function ConfirmSubmit({
         <h2>Submit your solution?</h2>
         <p className="muted small">
           Your code will be judged on the hidden tests. You will not see the
-          result — only that the submission was received. You may submit again
-          after 15 seconds.
+          result — only that the submission was received.
+        </p>
+        <p className="error small" style={{ marginTop: 8 }}>
+          ⚠ Each team submits <strong>once per round</strong>. Right now your
+          team timer stops and the code locks — you will not be able to edit it,
+          run samples or submit again for this round.
         </p>
         <div className="row spread" style={{ marginTop: 16 }}>
           <button onClick={onCancel}>Cancel</button>

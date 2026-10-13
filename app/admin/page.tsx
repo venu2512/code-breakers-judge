@@ -20,7 +20,14 @@ interface MonitorData {
   round: number;
   teams: MonitorTeam[];
   queuePending: number;
-  events: { id: number; at: number; kind: string; team_id: number | null; detail: string | null }[];
+  events: {
+    id: number;
+    at: number;
+    kind: string;
+    team_id: number | null;
+    team_name: string | null;
+    detail: string | null;
+  }[];
   serverNow: number;
 }
 interface RuntimeTool {
@@ -242,9 +249,12 @@ export default function AdminDashboard() {
           </a>
         </div>
         <p className="muted small">
-          When a round ends, open the Leaderboard, tick the teams that advance and
-          click “Advance”. The survivors can log in next round; everyone else sees
-          “did not qualify”. Assign the new round&apos;s problems before starting it.
+          You can change the total number of rounds at any time — even while a
+          round is running. The current round number never jumps; it only clamps
+          down if you lower the total below it. When a round ends, open the
+          Leaderboard, tick the teams that advance and click “Advance”. The
+          survivors can log in next round; everyone else sees “did not qualify”.
+          Assign the new round&apos;s problems before starting it.
         </p>
       </div>
 
@@ -261,7 +271,7 @@ export default function AdminDashboard() {
             <tr>
               <th>Team</th>
               <th>Round status</th>
-              <th>Submissions</th>
+              <th>Submitted</th>
               <th>In flight</th>
               <th>Last activity</th>
             </tr>
@@ -277,7 +287,7 @@ export default function AdminDashboard() {
                     <span className="badge fail">out</span>
                   )}
                 </td>
-                <td>{t.submissions}</td>
+                <td>{t.submissions > 0 ? "✓" : "—"}</td>
                 <td>{t.in_flight > 0 ? <span className="badge warn">{t.in_flight}</span> : "—"}</td>
                 <td className="muted small">
                   {t.last_submission
@@ -333,10 +343,19 @@ export default function AdminDashboard() {
           <h3>Recent events</h3>
           <div style={{ maxHeight: 260, overflow: "auto" }}>
             <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Team</th>
+                  <th>Event</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
               <tbody>
                 {monitor?.events.map((e) => (
                   <tr key={e.id}>
                     <td className="muted small">{new Date(e.at).toLocaleTimeString()}</td>
+                    <td className="small">{e.team_name ?? "—"}</td>
                     <td className="small">{e.kind}</td>
                     <td className="muted small">{e.detail ?? ""}</td>
                   </tr>

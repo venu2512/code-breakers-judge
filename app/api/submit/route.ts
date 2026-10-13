@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getTeamAssignment, getTeamEligibility } from "@/lib/assign";
-import { getStatus, isContestOpen } from "@/lib/contest";
-import { submit } from "@/lib/submissions";
+import { getStatus, isContestOpen, roundTiming } from "@/lib/contest";
+import { submit, hasSubmittedThisRound } from "@/lib/submissions";
 import { clientInfo, logEvent } from "@/lib/events";
 import { reserveCooldown } from "@/lib/ratelimit";
 import { handler, HttpError, ok, readJson, requireRole } from "@/lib/api";
@@ -46,6 +46,15 @@ export const POST = handler(async (req: Request) => {
   const assignment = getTeamAssignment(session.teamId);
   if (!assignment) throw new HttpError(409, "No problem assigned yet");
 
+  // One submission per round. Checked here (synchronously, with no await until
+  // the insert below finishes) so two concurrent submits cannot both slip in.
+  if (hasSubmittedThisRound(session.teamId)) {
+    throw new HttpError(
+      409,
+      "You have already submitted your solution for this round. Each round allows exactly one submission."
+    );
+  }
+
   // Check + reserve the cooldown after validation, with no await in between,
   // so two concurrent submits from the same team cannot both be accepted.
   const left = reserveCooldown("submit", session.teamId, SUBMIT_COOLDOWN_MS);
@@ -65,5 +74,19 @@ export const POST = handler(async (req: Request) => {
   const ci = clientInfo(req);
   logEvent("submit", session.teamId, `#${id} ${body.language}`, ci.ip, ci.ua);
 
-  return ok({ received: true, submissionId: id, at: Date.now() });
+  // The submitted instant freezes the team's personal timer. The client locks
+  // the editor immediately from this response instead of waiting for a poll.
+  const status = getStatus();
+  const roundStartMs = roundTiming(status.currentRound)?.started_at ?? status.startedAt;
+  const at = Date.now();
+
+  return ok({
+    received: true,
+    submissionId: id,
+    at,
+    submittedAtMs: at,
+    roundStartedAtMs: roundStartMs,
+    elapsedSeconds:
+      roundStartMs != null ? Math.max(0, Math.round((at - roundStartMs) / 1000)) : null,
+  });
 });
